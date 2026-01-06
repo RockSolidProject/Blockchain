@@ -1,5 +1,5 @@
-from blockchain import Blockchain
 import time
+from blockchain import Blockchain
 
 def print_block(b):
     print(f"Index: {b.index}, Timestamp: {b.timestamp:.3f}, Data: {b.data}, "
@@ -11,15 +11,26 @@ def main():
     print("Genesis block:")
     print_block(bc.getLatestBlock())
 
-    for i in range(1, 50):
-        print(f"\nMining block {i}...")
-        result = bc.mineBlock(f"Block {i} data")
-        if not result:
-            print("Mining aborted or failed (another chain update).")
-        else:
-            print("Mined block:")
-            print_block(result)
-        time.sleep(0.1)
+    target_height = 80
+    block_count = 0
+
+    try:
+        while bc.getLatestBlock().index < target_height:
+            start = time.time()
+            block = bc.mineBlockParallel(f"Parallel mined #{block_count + 1}")
+            elapsed = time.time() - start
+
+            if not block:
+                print("mineBlockParallel returned False (no block mined).")
+                break
+
+            print("\nMined block:")
+            print_block(block)
+            print(f"Mined in {elapsed:.3f}s")
+            block_count += 1
+
+    except KeyboardInterrupt:
+        print("\nInterrupted by user.")
 
     print("\nFull chain:")
     for b in bc.chain:
