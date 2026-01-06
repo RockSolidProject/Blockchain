@@ -2,11 +2,13 @@ import time
 import hashlib
 import threading
 import multiprocessing
+import json_util
 
 lock = threading.Lock()
 
 class Block:
     def __init__(self, index, data, timestamp, previousHash, difficulty=1, nonce=0):
+        data = json_util.to_deterministic_json(data)
         self.index = index
         self.data = data
         self.timestamp = timestamp
@@ -146,8 +148,9 @@ def _mine_worker(args):
     step = num_workers
     target = '0' * newDifficulty
 
+    json_data = json_util.to_deterministic_json(data)
     while True:
-        block_string = f"{newIndex}{data}{newTimestamp}{prevHash}{newDifficulty}{nonce}"
+        block_string = f"{newIndex}{json_data}{newTimestamp}{prevHash}{newDifficulty}{nonce}"
         hash_result = hashlib.sha256(block_string.encode()).hexdigest()
 
         if hash_result.startswith(target):

@@ -1,8 +1,9 @@
 import time
 from blockchain import Blockchain
+import json_util
 
 def print_block(b):
-    print(f"Index: {b.index}, Timestamp: {b.timestamp:.3f}, Data: {b.data}, "
+    print(f"Index: {b.index}, Timestamp: {b.timestamp:.3f}, Data: {json_util.from_json(b.data)}, "
           f"PrevHash: {b.previousHash[:8]}, Hash: {b.hash[:8]}, "
           f"Difficulty: {b.difficulty}, Nonce: {b.nonce}")
 
@@ -17,7 +18,13 @@ def main():
     try:
         while bc.getLatestBlock().index < target_height:
             start = time.time()
-            block = bc.mineBlockParallel(f"Parallel mined #{block_count + 1}")
+            block = bc.mineBlockParallel({
+                "block_num": block_count + 1,
+                "type": "danger",
+                "message": "Climbing hold rotated on south wall",
+                "location": "Neki pac",
+                "timestamp": "cas"
+            })
             elapsed = time.time() - start
 
             if not block:
