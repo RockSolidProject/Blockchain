@@ -1,3 +1,4 @@
+import os
 import time
 import hashlib
 import threading
@@ -175,12 +176,12 @@ def mineBlockParallel(args, stopFlag: threading.Event):
     newIndex = previousBlockIndex + 1
     timestamp = json["timestamp"]
     difficulty = json["difficulty"]
+    startingToken = json["startingToken"]
 
-    # num_processes = os.cpu_count() or 1
-    num_processes = 8
+    num_processes = os.cpu_count() or 1
 
     args = [
-        (newIndex, data, timestamp, prevHash, difficulty, i, num_processes)
+        (newIndex, data, timestamp, prevHash, difficulty, startingToken + i, num_processes)
         for i in range(num_processes)
     ]
 

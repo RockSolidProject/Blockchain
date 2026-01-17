@@ -8,10 +8,10 @@ import time
 import os
 import random
 import queue
+from main import print_block
 
 import blockchain
 from blockchain import Blockchain
-import json_util
 
 lock = threading.Lock()
 
@@ -53,7 +53,7 @@ def mainNodeFunction(comm):
 def serveThreadFunction(storeQueue: queue.Queue, chainLock: threading.Lock, blockchain: blockchain.Blockchain):
 
     while True:
-        time.sleep(random.uniform(1, 2))
+        time.sleep(random.uniform(0.1, 0.2))
         random_string = 'random number: ' + str(random.randint(1, 100))
         storeQueue.put(random_string)
 
@@ -78,6 +78,8 @@ def storeThreadFunction(storeQueue: queue.Queue,chainLock: threading.Lock,blockc
             startingToken = 0
             with chainLock:
                 latestBlock = blockchain.getLatestBlock()
+
+            for workerRank in range(1, numWorkers):
                 dataToStore = {
                     "prevHash": latestBlock.hash or "0",
                     "previousBlockIndex": latestBlock.index,
@@ -85,17 +87,23 @@ def storeThreadFunction(storeQueue: queue.Queue,chainLock: threading.Lock,blockc
                     "timestamp": time.time(),
                     "difficulty": blockchain.getDifficulty(),
                     "step": step,
+                    "startingToken": startingToken
                 }
-            for workerRank in range(1, numWorkers):
+                startingToken = startingToken + worker_threads[workerRank]
                 comm.send(json.dumps(dataToStore), dest=workerRank, tag=DATA_TO_STORE_TAG)
                 startingToken += worker_threads[workerRank]
             # must check if the block is received from any worker
+
             while True:
                 block = comm.recv(source=MPI.ANY_SOURCE, tag=BLOCK_RECEIVE_TAG)
+
                 with chainLock:
                     if not blockchain.addBlock(block):
-                        print(f"Main node: Received invalid block from worker", flush=True)
+                        # print(f"Main node: Received invalid block from worker", flush=True)
                         continue
+                    else:
+                        print_block(block)
+
                 break
 
 
@@ -149,7 +157,7 @@ def workerMinerThread(comm, rank, stop_mining, mined_block_queue, threadingLock)
             time.sleep(0.1)
             continue
 
-        print(f"Worker {rank} starting to mine with data: {data}", flush=True)
+        # print(f"Worker {rank} starting to mine with data: {data}", flush=True)
         block = blockchain.mineBlockParallel(
             data,
             stop_mining

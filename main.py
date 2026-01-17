@@ -8,7 +8,7 @@ import json
 def print_block(b):
     print(f"Index: {b.index}, Timestamp: {b.timestamp:.3f}, Data: {json_util.from_json(b.data)}, "
           f"PrevHash: {b.previousHash[:8]}, Hash: {b.hash[:8]}, "
-          f"Difficulty: {b.difficulty}, Nonce: {b.nonce}")
+          f"Difficulty: {b.difficulty}, Nonce: {b.nonce}", flush=True)
 
 def main():
     bc = Blockchain()
