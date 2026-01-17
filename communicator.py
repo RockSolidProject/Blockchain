@@ -78,6 +78,7 @@ def storeThreadFunction(storeQueue: queue.Queue, comm):
 
 
 def workerNodeFunction(comm):
+    lock = threading.Lock()
     rank = comm.Get_rank()
     num_threads = os.cpu_count() or 1
     comm.send(num_threads, dest=0, tag=SENDING_THREADS_TAG)
@@ -86,31 +87,30 @@ def workerNodeFunction(comm):
     mined_block_queue = queue.Queue()
 
     # Pass queue to listener so it can put received data in it
-    listener = threading.Thread(target=workerListenerThread, args=(comm, rank, stop_mining, mined_block_queue))
+    listener = threading.Thread(target=workerListenerThread, args=(comm, rank, stop_mining, mined_block_queue, lock))
     listener.daemon = True
     listener.start()
 
-    miner = threading.Thread(target=workerMinerThread, args=(comm, rank, stop_mining, mined_block_queue))
+    miner = threading.Thread(target=workerMinerThread, args=(comm, rank, stop_mining, mined_block_queue, lock))
     miner.start()
 
     miner.join()
     listener.join()
 
 
-def workerListenerThread(comm, rank, stop_mining, mined_block_queue):
-    """Listen for data from main node and put it in queue for mining"""
+def workerListenerThread(comm, rank, stop_mining, mined_block_queue, threadingLock):
+
     while True:
         data = comm.recv(source=0, tag=DATA_TO_STORE_TAG)
-        print(f"Worker {rank} listener received data: {data}", flush=True)
 
         # Stop current mining and queue new data
         stop_mining.set()
-        mined_block_queue.put(data)  # Queue the received data for mining
-        time.sleep(0.1)
+        mined_block_queue.empty()
+        mined_block_queue.put(data)
         stop_mining.clear()
 
 
-def workerMinerThread(comm, rank, stop_mining, mined_block_queue):
+def workerMinerThread(comm, rank, stop_mining, mined_block_queue, threadingLock):
     """Mine blocks using data from the queue"""
     bc = Blockchain()
 

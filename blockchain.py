@@ -105,6 +105,15 @@ class Blockchain:
     def isBiggerCumulativeDifficulty(self, chainToCompare):
         return self.getComulativeDifficulty(self.chain) < self.getComulativeDifficulty(chainToCompare)
 
+    def addBlock(self, block):
+        with lock:
+            latest_block = self.getLatestBlock()
+            if self.isValidNewBlock(block, latest_block):
+                return False
+            self.chain.append(block)
+            return True
+
+
     def mineBlockParallel(self, data):
         previousBlock = self.getLatestBlock()
         newIndex = previousBlock.index + 1
@@ -158,3 +167,48 @@ def _mine_worker(args):
         nonce += step
 
 
+def mineBlockParallel(args, stopFlag: threading.Event):
+    json = json_util.from_json(args)
+    prevHash = json["prevHash"]
+    previousBlockIndex = json["previousBlockIndex"]
+    data = json["data"]
+    newIndex = previousBlockIndex + 1
+    timestamp = json["timestamp"]
+    difficulty = json["difficulty"]
+
+    # num_processes = os.cpu_count() or 1
+    num_processes = 8
+
+    args = [
+        (newIndex, data, timestamp, prevHash, difficulty, i, num_processes)
+        for i in range(num_processes)
+    ]
+
+    winning_nonce = None
+
+    with multiprocessing.Pool(processes=num_processes) as pool:
+        result = pool.imap_unordered(_mine_worker, args, chunksize=1)
+
+        while True:
+            if stopFlag.is_set():
+                pool.terminate()
+                pool.join()
+                return None
+
+            try:
+                res = result.next(timeout=0.1)
+                if res is not None:
+                    winning_nonce = res
+                    pool.terminate()
+                    pool.join()
+                    break
+            except StopIteration:
+                break
+            except multiprocessing.TimeoutError:
+                continue
+
+    if winning_nonce is None:
+        return False
+
+    block = Block(newIndex, data, timestamp, prevHash, difficulty, winning_nonce)
+    return block

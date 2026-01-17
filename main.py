@@ -1,6 +1,9 @@
+import threading
 import time
 from blockchain import Blockchain
+import blockchain
 import json_util
+import json
 
 def print_block(b):
     print(f"Index: {b.index}, Timestamp: {b.timestamp:.3f}, Data: {json_util.from_json(b.data)}, "
@@ -46,5 +49,36 @@ def main():
     print("\nChain valid:", bc.isValidChain(bc.chain))
     print("Cumulative difficulty:", bc.getComulativeDifficulty(bc.chain))
 
+
+def tempMain():
+    bc = Blockchain()
+    print_block(bc.getLatestBlock())
+    stop = threading.Event()
+    threading.Thread(target=stopMiningAfterDelay, args=(stop, 20)).start()
+
+    while True:
+        latest = bc.getLatestBlock()
+        block = blockchain.mineBlockParallel(json.dumps({
+            "prevHash": latest.hash,  # Changed from previousHash
+            "previousBlockIndex": latest.index,
+            "data": {
+                "name": "some data",
+            },
+            "timestamp": time.time(),
+            "difficulty": bc.getDifficulty(),
+        }), stop)
+
+        if block:
+            print_block(block)
+            bc.chain.append(block)
+        else:
+            print("Mining stopped or failed")
+            break
+
+def stopMiningAfterDelay(stop_event, delay):
+    time.sleep(delay)
+    stop_event.set()
+    print("Mining stopped after delay", delay)
+
 if __name__ == "__main__":
-    main()
+    tempMain()
