@@ -109,9 +109,9 @@ class Blockchain:
         with lock:
             latest_block = self.getLatestBlock()
             if self.isValidNewBlock(block, latest_block):
-                return False
-            self.chain.append(block)
-            return True
+                self.chain.append(block)
+                return True
+            return False
 
 
     def mineBlockParallel(self, data):

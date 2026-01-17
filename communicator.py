@@ -1,3 +1,4 @@
+import json
 from logging import exception
 
 from mpi4py import MPI
@@ -7,6 +8,8 @@ import time
 import os
 import random
 import queue
+
+import blockchain
 from blockchain import Blockchain
 import json_util
 
@@ -15,6 +18,7 @@ lock = threading.Lock()
 
 SENDING_THREADS_TAG = 0
 DATA_TO_STORE_TAG = 1
+BLOCK_RECEIVE_TAG = 2
 NUM_THREADS_PER_WORKER = 4
 
 def startNode():
@@ -33,9 +37,11 @@ def startNode():
 def mainNodeFunction(comm):
 
     storeQueue = queue.Queue()
+    blockchain = Blockchain()
+    chainLock = threading.Lock()
 
-    serveThread = threading.Thread(target=serveThreadFunction, args=(storeQueue,))
-    storeThread = threading.Thread(target=storeThreadFunction, args=(storeQueue, comm))
+    serveThread = threading.Thread(target=serveThreadFunction, args=(storeQueue, chainLock, blockchain))
+    storeThread = threading.Thread(target=storeThreadFunction, args=(storeQueue,chainLock, blockchain, comm))
 
     serveThread.start()
     storeThread.start()
@@ -44,7 +50,7 @@ def mainNodeFunction(comm):
     storeThread.join()
 
 
-def serveThreadFunction(storeQueue: queue.Queue):
+def serveThreadFunction(storeQueue: queue.Queue, chainLock: threading.Lock, blockchain: blockchain.Blockchain):
 
     while True:
         time.sleep(random.uniform(1, 2))
@@ -52,7 +58,7 @@ def serveThreadFunction(storeQueue: queue.Queue):
         storeQueue.put(random_string)
 
 
-def storeThreadFunction(storeQueue: queue.Queue, comm):
+def storeThreadFunction(storeQueue: queue.Queue,chainLock: threading.Lock,blockchain: blockchain.Blockchain, comm):
 
     numWorkers = comm.Get_size()
     worker_threads = {}
@@ -67,11 +73,32 @@ def storeThreadFunction(storeQueue: queue.Queue, comm):
 
     while True:
         try:
-            data = storeQueue.get(timeout=5)
+            data = storeQueue.get(timeout = 0.1)
+
             startingToken = 0
+            with chainLock:
+                latestBlock = blockchain.getLatestBlock()
+                dataToStore = {
+                    "prevHash": latestBlock.hash or "0",
+                    "previousBlockIndex": latestBlock.index,
+                    "data": data,
+                    "timestamp": time.time(),
+                    "difficulty": blockchain.getDifficulty(),
+                    "step": step,
+                }
             for workerRank in range(1, numWorkers):
-                comm.send(f"starting token {startingToken} step {step} data {data}", dest=workerRank, tag=DATA_TO_STORE_TAG)
+                comm.send(json.dumps(dataToStore), dest=workerRank, tag=DATA_TO_STORE_TAG)
                 startingToken += worker_threads[workerRank]
+            # must check if the block is received from any worker
+            while True:
+                block = comm.recv(source=MPI.ANY_SOURCE, tag=BLOCK_RECEIVE_TAG)
+                with chainLock:
+                    if not blockchain.addBlock(block):
+                        print(f"Main node: Received invalid block from worker", flush=True)
+                        continue
+                break
+
+
         except:
             continue
 
@@ -123,8 +150,13 @@ def workerMinerThread(comm, rank, stop_mining, mined_block_queue, threadingLock)
             continue
 
         print(f"Worker {rank} starting to mine with data: {data}", flush=True)
+        block = blockchain.mineBlockParallel(
+            data,
+            stop_mining
+        )
+        if(block is None):
+            continue
 
-        # Parse the data string (format: "starting token X step Y data Z")
-        # Or just use the whole string as block data
+        comm.send(block, dest=0, tag=BLOCK_RECEIVE_TAG)
 
 
