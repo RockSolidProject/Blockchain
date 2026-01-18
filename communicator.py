@@ -1,5 +1,7 @@
 import json
 from logging import exception
+import paho.mqtt.client as mqtt
+from dotenv import load_dotenv
 
 from mpi4py import MPI
 import threading
@@ -8,10 +10,25 @@ import time
 import os
 import random
 import queue
+
+from paho.mqtt.client import MQTT_BRIDGE, MQTT_CLIENT, MQTT_ERR_TLS, MQTT_LOG_ERR, MQTT_ERR_AGAIN
+
 from main import print_block
 
 import blockchain
 from blockchain import Blockchain
+
+load_dotenv()
+def get_mqtt_config():
+    broker = os.getenv("MQTT_BROKER")
+    port = int(os.getenv("MQTT_PORT", "8883"))
+    username = os.getenv("MQTT_USERNAME")
+    password = os.getenv("MQTT_PASSWORD")
+    topic = os.getenv("MQTT_TOPIC", "messages")
+    if not broker or not username or not password:
+        raise RuntimeError("Missing MQTT config in environment (.env)")
+    return broker, port, username, password, topic
+MQTT_BROKER, MQTT_PORT, MQTT_USERNAME, MQTT_PASSWORD, MQTT_TOPIC = get_mqtt_config()
 
 lock = threading.Lock()
 
@@ -51,11 +68,37 @@ def mainNodeFunction(comm):
 
 
 def serveThreadFunction(storeQueue: queue.Queue, chainLock: threading.Lock, blockchain: blockchain.Blockchain):
+    def on_connect(client, userdata, flags, rc):
+        if rc == 0:
+            print("MQTT: Connected successfully!", flush=True)
+            client.subscribe(MQTT_TOPIC)
+            print(f"MQTT: Subscribed to {MQTT_TOPIC}", flush=True)
+        else:
+            print(f"MQTT: Connection failed with code {rc}", flush=True)
 
-    while True:
-        time.sleep(random.uniform(0.1, 0.2))
-        random_string = 'random number: ' + str(random.randint(1, 100))
-        storeQueue.put(random_string)
+    def on_message(client, userdata, msg):
+        payload = msg.payload.decode()
+        print(f"MQTT: Received message: {payload} on topic {msg.topic}", flush=True)
+        storeQueue.put(payload)
+
+    client = mqtt.Client()
+    client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.tls_set()
+
+    print(f"MQTT: Connecting to {MQTT_BROKER}:{MQTT_PORT} ...", flush=True)
+    client.connect(MQTT_BROKER, MQTT_PORT, 60)
+    client.loop_start()
+
+    try:
+        while True:
+            time.sleep(0.1)
+    except KeyboardInterrupt:
+        print("MQTT: Disconnecting...", flush=True)
+    finally:
+        client.loop_stop()
+        client.disconnect()
 
 
 def storeThreadFunction(storeQueue: queue.Queue,chainLock: threading.Lock,blockchain: blockchain.Blockchain, comm):
@@ -166,5 +209,3 @@ def workerMinerThread(comm, rank, stop_mining, mined_block_queue, threadingLock)
             continue
 
         comm.send(block, dest=0, tag=BLOCK_RECEIVE_TAG)
-
-
