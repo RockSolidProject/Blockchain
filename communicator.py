@@ -2,16 +2,13 @@ import json
 from logging import exception
 import paho.mqtt.client as mqtt
 from dotenv import load_dotenv
+from flask import Flask, jsonify
 
 from mpi4py import MPI
 import threading
-import hashlib
 import time
 import os
-import random
 import queue
-
-from paho.mqtt.client import MQTT_BRIDGE, MQTT_CLIENT, MQTT_ERR_TLS, MQTT_LOG_ERR, MQTT_ERR_AGAIN
 
 from main import print_block
 
@@ -68,6 +65,29 @@ def mainNodeFunction(comm):
 
 
 def serveThreadFunction(storeQueue: queue.Queue, chainLock: threading.Lock, blockchain: blockchain.Blockchain):
+    app = Flask(__name__)
+
+    @app.route('/')
+    def index():
+        blocks_json = ""
+        with chainLock:
+            for block in blockchain.chain:
+                if blocks_json == "":
+                    blocks_json = "[" + block.data
+                else:
+                    blocks_json = f"{blocks_json},{block.data}"
+        return blocks_json+"]"
+
+    @app.route('/hello')
+    def hello():
+        return "Hello World!"
+
+    def run_flask():
+        app.run(host='0.0.0.0', port=5001, debug=False, use_reloader=False)
+
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+
     def on_connect(client, userdata, flags, rc):
         if rc == 0:
             print("MQTT: Connected successfully!", flush=True)
